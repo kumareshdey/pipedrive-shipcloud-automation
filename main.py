@@ -87,14 +87,14 @@ class Pipedrive:
         deal_fields = "/v1/dealFields"
     
     class CustomFields:
-        tracking_id = 'c1426df666fd49443e26bb36012119ec34c5a3a7'
+        # tracking_id = 'c1426df666fd49443e26bb36012119ec34c5a3a7'
         contact_person = '4038f1a6e2f4a6ac5b89dde211f4cecc8a7062bf'
         company = '4cb7ea08bfd7884d45f9356b4d2b892ddac23b70'
         street = '49e07c0099a5fa306b2f9d259b2bdb6904622120'
         housenumber = 'ac5b5083d27f16e83b8105a4f7a01a6f0af89b9d'
         postcode = 'aa0591d2fbbf1dd3b9d2e62bb49d110abc3597da'
         city = '1077b2967f82b8878320c7a6604c4c8f65bfda0c'
-        shipcloud_id = ''
+        shipcloud_id = 'c1426df666fd49443e26bb36012119ec34c5a3a7'
 
 
 
@@ -157,8 +157,8 @@ class Pipedrive:
         payload = {}
         if stage_id is not None:
             payload['stage_id'] = stage_id
-        if tracking_id is not None:
-            payload[Pipedrive.CustomFields.tracking_id] = tracking_id
+        # if tracking_id is not None:
+        #     payload[Pipedrive.CustomFields.tracking_id] = tracking_id
         if shipcloud_id is not None:
             payload[Pipedrive.CustomFields.shipcloud_id] = shipcloud_id
         response = Pipedrive.put(Pipedrive.Endpoints.update_deal.format(id=deal_id), json=payload)
@@ -239,15 +239,6 @@ class Shipcloud:
         log.info(response)
         return response
     
-    @staticmethod
-    @retry(max_retry_count=3, interval_sec=20)
-    def track_parcel(tracking_id=None):
-        try:
-            if not tracking_id:
-                return Shipcloud.get(Shipcloud.Endpoints.track_parcel)
-            return Shipcloud.get(Shipcloud.Endpoints.track_parcel, id=tracking_id)
-        except Exception as e:
-            log.error(f"Request was not successful: {e}")
 
     @staticmethod
     @retry(max_retry_count=3, interval_sec=10)
