@@ -5,7 +5,7 @@ import logging
 from logging import config
 import time
 import warnings
-from credentials import PIPEDRIVE_API_KEY, SHIPCLOUD_API_KEY
+from .credentials import PIPEDRIVE_API_KEY, SHIPCLOUD_API_KEY
 
 
 def configure_get_log():
@@ -37,7 +37,7 @@ def configure_get_log():
             
             "loggers": {
                 "root": {
-                    "level": logging.INFO,
+                    "level": logging.DEBUG,
                     "handlers": ["file", "console"],
                     "propagate": False,
                 },
@@ -103,7 +103,8 @@ class Pipedrive:
         query_params["api_token"] = Pipedrive.pipedrive_api_key
         url = f"{Pipedrive.BASE_URL}/{endpoint_extension}"
         response = requests.get(url, params=query_params)
-        log.info(f"CURL: {(curlify.to_curl(response.request))}")
+        log.debug(f"CURL: {(curlify.to_curl(response.request))}")
+        log.debug(f"RESPONSE: {response.text}")
         if response.status_code == 200:
             return response.json()
         else:
@@ -115,7 +116,8 @@ class Pipedrive:
         query_params={"api_token": Pipedrive.pipedrive_api_key}
         url = f"{Pipedrive.BASE_URL}/{endpoint_extension}"
         response = requests.post(url, data=data, json=json, params=query_params)
-        log.info(f"CURL: {(curlify.to_curl(response.request))}")
+        log.debug(f"CURL: {(curlify.to_curl(response.request))}")
+        log.debug(f"RESPONSE: {response.text}")
         if response.status_code == 200:
             return response.json()
         else:
@@ -127,7 +129,8 @@ class Pipedrive:
         query_params={"api_token": Pipedrive.pipedrive_api_key}
         url = f"{Pipedrive.BASE_URL}/{endpoint_extension}"
         response = requests.put(url, data=data, json=json, params=query_params)
-        log.info(f"CURL: {(curlify.to_curl(response.request))}")
+        log.debug(f"CURL: {(curlify.to_curl(response.request))}")
+        log.debug(f"RESPONSE: {response.text}")
         if response.status_code in [200, 201]:
             return response.json()
         else:
@@ -138,8 +141,7 @@ class Pipedrive:
     @retry(max_retry_count=3, interval_sec=60)
     def get_deals_by_stage_id(stage_id: int):
         response =  Pipedrive.get(Pipedrive.Endpoints.deals, stage_id=stage_id)['data']
-        log.info(response)
-        return response
+        return response or []
 
     @staticmethod
     def get_stages():
@@ -154,6 +156,7 @@ class Pipedrive:
     @staticmethod
     @retry(max_retry_count=3, interval_sec=10)
     def update_deal(deal_id, stage_id=None, tracking_id=None, shipcloud_id=None):
+        log.info(f"""Updating deal : {deal_id}""")
         payload = {}
         if stage_id is not None:
             payload['stage_id'] = stage_id
@@ -162,7 +165,6 @@ class Pipedrive:
         if shipcloud_id is not None:
             payload[Pipedrive.CustomFields.shipcloud_id] = shipcloud_id
         response = Pipedrive.put(Pipedrive.Endpoints.update_deal.format(id=deal_id), json=payload)
-        log.info(response)
         return response
         
 
@@ -186,11 +188,12 @@ class Shipcloud:
         }
         url = f"{Shipcloud.BASE_URL}/{endpoint_extension}"
         response = requests.get(url, params=query_params, headers=header)
-        log.info(f"CURL: {(curlify.to_curl(response.request))}")
+        log.debug(f"CURL: {(curlify.to_curl(response.request))}")
+        log.debug(f"RESPONSE: {response.text}")
         if response.status_code == 200:
             return response.json()
         else:
-            print(f"Could not fetch document. response = {response.text}, status_code = {response.status_code}")
+            log.error(f"Could not fetch document. response = {response.text}, status_code = {response.status_code}")
             raise Exception(response.text)
     
     @staticmethod
@@ -201,7 +204,8 @@ class Shipcloud:
         }
         url = f"{Shipcloud.BASE_URL}/{endpoint_extension}"
         response = requests.post(url, data=data, json=json, headers=header)
-        log.info(f"CURL: {(curlify.to_curl(response.request))}")
+        log.debug(f"CURL: {(curlify.to_curl(response.request))}")
+        log.debug(f"RESPONSE: {response.text}")
         if response.status_code in [200, 201]:
             return response.json()
         else:
@@ -245,23 +249,23 @@ class Shipcloud:
     def get_shipments(shipment_id=None):
         if not shipment_id:
             response = Shipcloud.get(Shipcloud.Endpoints.create_shipment)
-            log.info(response)
             return response
         else:
             response = Shipcloud.get(Shipcloud.Endpoints.create_shipment, id=shipment_id)
-            log.info(response)
             return response
         
 def update_delivery_statuses():
     deals_out_for_delivery = Pipedrive.get_deals_by_stage_id(Pipedrive.Stages.out_for_delivery)
     deals_printed = Pipedrive.get_deals_by_stage_id(Pipedrive.Stages.printed)
     for deal in deals_out_for_delivery:
+        log.info(f"""Checking delivery status for : {deal["title"]}""")
         shipment = Shipcloud.get_shipments(shipment_id=deal[Pipedrive.CustomFields.shipcloud_id])
         for event in shipment["shipments"][0]['packages'][0]['tracking_events']:
             if event['status'] == Shipcloud.Status.delivered:
                 update_deal = Pipedrive.update_deal(deal_id=deal['id'], stage_id=Pipedrive.Stages.delivered)
                 break
     for deal in deals_printed:
+        log.info(f"""Checking delivery status for : {deal["title"]}""")
         shipment = Shipcloud.get_shipments(shipment_id=deal[Pipedrive.CustomFields.shipcloud_id])
         for event in shipment["shipments"][0]['packages'][0]['tracking_events']:
             if event['status'] == Shipcloud.Status.delivered:
@@ -277,7 +281,7 @@ def update_delivery_statuses():
 def create_shipments():
     deals = Pipedrive.get_deals_by_stage_id(Pipedrive.Stages.ready_for_shipping)
     for deal in deals:
-        log.info(f"Creating shipment for : {deal["title"]}")
+        log.info(f"""Creating shipment for : {deal["title"]}""")
         tracking_details = Shipcloud.create_shipment_request(
             company=deal[Pipedrive.CustomFields.company], 
             first_name=deal[Pipedrive.CustomFields.contact_person],
@@ -292,7 +296,10 @@ def create_shipments():
     return True
 
 
-
 def run_pipeline():
-    update_delivery_statuses()
-    create_shipments()
+    log.info("Running: update_delivery_statuses")
+    result = update_delivery_statuses()
+    log.info(f'update_delivery_statuses completed. result = {result}')
+    log.info("Running: create_shipments")
+    result = create_shipments()
+    log.info(f'create_shipments completed. result = {result}')
