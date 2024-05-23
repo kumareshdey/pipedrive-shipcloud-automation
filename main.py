@@ -5,7 +5,7 @@ import logging
 from logging import config
 import time
 import warnings
-from .credentials import PIPEDRIVE_API_KEY, SHIPCLOUD_API_KEY
+from credentials import PIPEDRIVE_API_KEY, SHIPCLOUD_API_KEY
 
 
 def configure_get_log():
@@ -214,7 +214,7 @@ class Shipcloud:
         
     @staticmethod
     @retry(max_retry_count=3, interval_sec=20)
-    def create_shipment_request(company="", first_name="", last_name="", street="", street_no="", zip_code="", city="", country="DE"):
+    def create_shipment_request(pipedrive_id="", company="", first_name="", last_name="", street="", street_no="", zip_code="", city="",email="logistics@brandgarage.de", country="DE"):
         payload = {
             "to": {
                 'company': company,
@@ -235,7 +235,8 @@ class Shipcloud:
             },
             "carrier": "iloxx",
             "service": "standard",
-            "notification_email": "logistics@brandgarage.de",
+            "reference_number": pipedrive_id,
+            "notification_email": email,
             "create_shipping_label": True
         }
 
@@ -282,17 +283,25 @@ def create_shipments():
     deals = Pipedrive.get_deals_by_stage_id(Pipedrive.Stages.ready_for_shipping)
     for deal in deals:
         log.info(f"""Creating shipment for : {deal["title"]}""")
+        email = ''
+        if deal['person_id']['email']:
+            email = deal['person_id']['email'][0].get('value')
         tracking_details = Shipcloud.create_shipment_request(
+            pipedrive_id=deal['id'],
             company=deal[Pipedrive.CustomFields.company], 
-            first_name=deal[Pipedrive.CustomFields.contact_person],
+            first_name=deal[Pipedrive.CustomFields.contact_person] or deal['person_id']['name'],
             street=deal[Pipedrive.CustomFields.street], 
             street_no=deal[Pipedrive.CustomFields.housenumber],
             zip_code=deal[Pipedrive.CustomFields.postcode], 
-            city=deal[Pipedrive.CustomFields.city]
+            city=deal[Pipedrive.CustomFields.city],
+            email=email
         )
-        tracking_id = tracking_details['carrier_tracking_no']
-        shipcloud_id = tracking_details['id']
-        update_deal = Pipedrive.update_deal(deal_id=deal['id'], stage_id=Pipedrive.Stages.printed, tracking_id=tracking_id, shipcloud_id=shipcloud_id)
+        if tracking_details:
+            tracking_id = tracking_details['carrier_tracking_no']
+            shipcloud_id = tracking_details['id']
+            update_deal = Pipedrive.update_deal(deal_id=deal['id'], stage_id=Pipedrive.Stages.printed, tracking_id=tracking_id, shipcloud_id=shipcloud_id)
+        else:
+            log.error(f"Creating shipment failed for: {deal["title"]}")
     return True
 
 
