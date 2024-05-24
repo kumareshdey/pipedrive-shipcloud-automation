@@ -253,7 +253,10 @@ class Shipcloud:
             return response
         else:
             response = Shipcloud.get(Shipcloud.Endpoints.create_shipment, id=shipment_id)
-            return response
+            for ship in response['shipments']:
+                if ship['id'] == shipment_id:
+                    return ship
+            return []
         
 def update_delivery_statuses():
     deals_out_for_delivery = Pipedrive.get_deals_by_stage_id(Pipedrive.Stages.out_for_delivery)
@@ -261,14 +264,14 @@ def update_delivery_statuses():
     for deal in deals_out_for_delivery:
         log.info(f"""Checking delivery status for : {deal["title"]}""")
         shipment = Shipcloud.get_shipments(shipment_id=deal[Pipedrive.CustomFields.shipcloud_id])
-        for event in shipment["shipments"][0]['packages'][0]['tracking_events']:
+        for event in shipment['packages'][0]['tracking_events']:
             if event['status'] == Shipcloud.Status.delivered:
                 update_deal = Pipedrive.update_deal(deal_id=deal['id'], stage_id=Pipedrive.Stages.delivered)
                 break
     for deal in deals_printed:
         log.info(f"""Checking delivery status for : {deal["title"]}""")
         shipment = Shipcloud.get_shipments(shipment_id=deal[Pipedrive.CustomFields.shipcloud_id])
-        for event in shipment["shipments"][0]['packages'][0]['tracking_events']:
+        for event in shipment['packages'][0]['tracking_events']:
             if event['status'] == Shipcloud.Status.delivered:
                 update_deal = Pipedrive.update_deal(deal_id=deal['id'], stage_id=Pipedrive.Stages.delivered)
                 break
@@ -301,7 +304,7 @@ def create_shipments():
             shipcloud_id = tracking_details['id']
             update_deal = Pipedrive.update_deal(deal_id=deal['id'], stage_id=Pipedrive.Stages.printed, tracking_id=tracking_id, shipcloud_id=shipcloud_id)
         else:
-            log.error(f"Creating shipment failed for: {deal["title"]}")
+            log.error(f"""Creating shipment failed for: {deal["title"]}""")
     return True
 
 
